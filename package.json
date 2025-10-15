@@ -1,10 +1,10 @@
 {
   "name": "preset-mic",
-  "version": "1.0.3",
-  "description": "Biblioteca JS para gravação de áudio no navegador, pronta para uso, com configuração otimizada para voz.",
+  "version": "1.0.",
+  "description": "Biblioteca para realizar a transcrição de áudio em texto no navegador, pronta para uso, com configuração otimizada para voz.",
   "main": "src/preset-mic.js",
   "keywords": ["audio", "gravação", "mediarecorder", "voz", "webm", "opus", "preset"],
-  "author": "Seu Nome <seu@email.com>",
+  "author": "David Magalhães <deivi_gf144@hotmail.com>",
   "license": "MIT",
   "types": "preset-mic.d.ts",
   "repository": {
