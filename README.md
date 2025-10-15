@@ -142,6 +142,19 @@ const stop = () => mic.value && mic.value.stop();
 // };
 </script>
 ```
+### Observação para uso com Vue + TypeScript
+
+Se você estiver usando Vue com TypeScript, adicione o seguinte arquivo (por exemplo, `src/shims-vue.d.ts`):
+
+```ts
+declare module '*.vue' {
+  import { DefineComponent } from 'vue';
+  const component: DefineComponent<{}, {}, any>;
+  export default component;
+}
+```
+
+Isso é necessário para que o TypeScript reconheça arquivos `.vue` como módulos válidos.
 
 
 ## Exemplo de uso em Angular
