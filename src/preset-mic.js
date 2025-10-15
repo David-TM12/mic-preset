@@ -2,93 +2,54 @@
 // Biblioteca para gravação de áudio no navegador com configuração otimizada para voz
 // Compatível com qualquer framework frontend
 
+
 class PresetMic {
-  constructor() {
-    this.mediaRecorder = null;
-    this.audioChunks = [];
-    this.stream = null;
+  /**
+   * @param {Object} [options]
+   * @param {boolean} [options.onlyFinal=false] - Se true, retorna apenas o texto final ao parar. Se false, retorna parcial+final em tempo real.
+   * @param {string} [options.lang='pt-BR'] - Idioma da transcrição.
+   */
+  constructor(options = {}) {
     this.isRecording = false;
     this.callbacks = {
       onStart: null,
-      onPause: null,
-      onResume: null,
       onStop: null,
-      onData: null,
-      onError: null
+      onError: null,
+      onTranscription: null
     };
+    this.speechRecognition = null;
+    this._isSpeechRecognitionSupported =
+      typeof window !== 'undefined' &&
+      (window.SpeechRecognition || window.webkitSpeechRecognition);
+    this._onlyFinal = options.onlyFinal || false;
+    this._lang = options.lang || 'pt-BR';
+    this._finalTranscript = '';
+    this._lastTranscript = '';
   }
+
 
   async start() {
     if (this.isRecording) return;
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: 44100,
-          channelCount: 1,
-          noiseSuppression: true,
-          echoCancellation: true
-        }
-      });
-      this.mediaRecorder = new MediaRecorder(this.stream, {
-        mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 128000
-      });
-      this.audioChunks = [];
-      this.mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          this.audioChunks.push(e.data);
-          if (this.callbacks.onData) this.callbacks.onData(e.data);
-        }
-      };
-      this.mediaRecorder.onstart = () => {
-        this.isRecording = true;
-        if (this.callbacks.onStart) this.callbacks.onStart();
-      };
-      this.mediaRecorder.onpause = () => {
-        if (this.callbacks.onPause) this.callbacks.onPause();
-      };
-      this.mediaRecorder.onresume = () => {
-        if (this.callbacks.onResume) this.callbacks.onResume();
-      };
-      this.mediaRecorder.onstop = () => {
-        this.isRecording = false;
-        if (this.callbacks.onStop) this.callbacks.onStop(this.getAudioBlob());
-        this._cleanup();
-      };
-      this.mediaRecorder.onerror = (e) => {
-        if (this.callbacks.onError) this.callbacks.onError(e);
-      };
-      this.mediaRecorder.start();
-    } catch (e) {
-      if (this.callbacks.onError) this.callbacks.onError(e);
+    if (!this._isSpeechRecognitionSupported) {
+      if (this.callbacks.onError) this.callbacks.onError(new Error('SpeechRecognition API não suportada neste navegador.'));
+      return;
     }
+    this._finalTranscript = '';
+    this._lastTranscript = '';
+    this._startSpeechRecognition();
+    this.isRecording = true;
+    if (this.callbacks.onStart) this.callbacks.onStart();
   }
 
-  pause() {
-    if (this.mediaRecorder && this.isRecording) {
-      this.mediaRecorder.pause();
-    }
-  }
-
-  resume() {
-    if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
-      this.mediaRecorder.resume();
-    }
-  }
 
   stop() {
-    if (this.mediaRecorder && this.isRecording) {
-      this.mediaRecorder.stop();
+    if (this.isRecording) {
+      this._stopSpeechRecognition();
+      this.isRecording = false;
+      if (this.callbacks.onStop) this.callbacks.onStop();
     }
   }
 
-  getAudioBlob() {
-    return new Blob(this.audioChunks, { type: 'audio/webm;codecs=opus' });
-  }
-
-  getAudioArrayBuffer() {
-    return this.getAudioBlob().arrayBuffer();
-  }
 
   on(event, callback) {
     if (this.callbacks.hasOwnProperty('on' + event.charAt(0).toUpperCase() + event.slice(1))) {
@@ -96,13 +57,58 @@ class PresetMic {
     }
   }
 
+
   _cleanup() {
-    if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
-      this.stream = null;
+    this._stopSpeechRecognition();
+  }
+
+
+  _startSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    this.speechRecognition = new SpeechRecognition();
+    this.speechRecognition.lang = this._lang;
+    this.speechRecognition.continuous = true;
+    this.speechRecognition.interimResults = true;
+    this._finalTranscript = '';
+    this._lastTranscript = '';
+    this.speechRecognition.onresult = (event) => {
+      // Segue o padrão do exemplo fornecido: concatena todos os resultados
+      const transcription = Array.from(event.results)
+        .map(result => result[0].transcript)
+        .join('');
+      this._lastTranscript = transcription;
+      // Atualiza o finalTranscript apenas com os resultados finais
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          this._finalTranscript += event.results[i][0].transcript;
+        }
+      }
+      if (this.callbacks.onTranscription) {
+        if (this._onlyFinal) {
+          // Só chama ao parar
+        } else {
+          this.callbacks.onTranscription(transcription, event);
+        }
+      }
+    };
+    this.speechRecognition.onerror = (e) => {
+      if (this.callbacks.onError) this.callbacks.onError(e);
+    };
+    this.speechRecognition.start();
+  }
+
+
+  _stopSpeechRecognition() {
+    if (this.speechRecognition) {
+      this.speechRecognition.onend = () => {
+        if (this.callbacks.onTranscription && this._onlyFinal) {
+          // Retorna o texto final (tudo que foi reconhecido)
+          this.callbacks.onTranscription(this._lastTranscript || this._finalTranscript);
+        }
+      };
+      this.speechRecognition.stop();
+      this.speechRecognition = null;
     }
-    this.mediaRecorder = null;
-    this.audioChunks = [];
   }
 }
 
